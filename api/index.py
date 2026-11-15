@@ -12,7 +12,7 @@ app = FastAPI()
 
 @dataclass(order=True)
 class PowerMessage:
-    priority: int  # 1 = Critical Infrastructure, 2 = High (EV/Solar), 3 = Standard Residential
+    priority: int  # 1 = Critical, 2 = High, 3 = Standard
     timestamp: float = field(compare=True)
     msg_id: str = field(compare=False)
     home_id: str = field(compare=False)
@@ -26,8 +26,6 @@ class CentralGridBroker:
         self.capacity_kw = capacity_kw
         self.priority_queue: List[PowerMessage] = []
         self._lock = asyncio.Lock()
-        
-        # Queuing Theory & Telemetry Metrics
         self.total_messages = 0
         self.total_wait_time = 0.0
         self.service_time_total = 0.0
@@ -38,7 +36,7 @@ class CentralGridBroker:
     def log_event(self, level: str, title: str, detail: str):
         self.negotiation_logs.append({
             "time": time.strftime("%H:%M:%S"),
-            "level": level,  # INFO, PRIORITY, WARN, SHED
+            "level": level,
             "title": title,
             "detail": detail
         })
@@ -62,7 +60,6 @@ class CentralGridBroker:
         return await fut
 
     async def negotiate_and_schedule(self):
-        """Priority-based message dequeuing and capacity negotiation algorithm."""
         process_start = time.time()
         async with self._lock:
             if not self.priority_queue:
@@ -72,19 +69,11 @@ class CentralGridBroker:
                 ordered_messages.append(heapq.heappop(self.priority_queue))
 
         total_demand = sum(m.requested_kw for m in ordered_messages)
-        self.log_event(
-            "INFO",
-            "Broker Queue Snapshot",
-            f"Ingested {len(ordered_messages)} node packets. Total Demand: {total_demand:.1f} kW vs Grid Cap: {self.capacity_kw:.1f} kW."
-        )
+        self.log_event("INFO", "Broker Queue Snapshot", f"Ingested {len(ordered_messages)} node packets. Total Demand: {total_demand:.1f} kW vs Grid Cap: {self.capacity_kw:.1f} kW.")
 
         if total_demand > self.capacity_kw:
             deficit = total_demand - self.capacity_kw
-            self.log_event(
-                "WARN",
-                "Grid Overload Detected",
-                f"Demand exceeds capacity by {deficit:.1f} kW. Engaging Priority Heap Arbitration & Load Shedding."
-            )
+            self.log_event("WARN", "Grid Overload Detected", f"Demand exceeds capacity by {deficit:.1f} kW. Engaging Priority Heap Arbitration & Load Shedding.")
 
         remaining_kw = self.capacity_kw
         now = time.time()
@@ -95,34 +84,20 @@ class CentralGridBroker:
 
             if remaining_kw >= msg.requested_kw:
                 remaining_kw -= msg.requested_kw
-                self.log_event(
-                    "PRIORITY",
-                    f"[P{msg.priority}] {msg.home_id} → 100% Allocated",
-                    f"Granted {msg.requested_kw} kW ({msg.appliance_surge}). Remaining Grid Headroom: {remaining_kw:.1f} kW."
-                )
+                self.log_event("PRIORITY", f"[P{msg.priority}] {msg.home_id} → 100% Allocated", f"Granted {msg.requested_kw} kW ({msg.appliance_surge}). Remaining Headroom: {remaining_kw:.1f} kW.")
                 if not msg.future_result.done():
                     msg.future_result.set_result(msg.requested_kw)
-
             elif remaining_kw > 0:
                 allocated = round(remaining_kw, 2)
                 curtailed = round(msg.requested_kw - allocated, 2)
                 remaining_kw = 0.0
                 self.curtailed_count += 1
-                self.log_event(
-                    "WARN",
-                    f"[P{msg.priority}] {msg.home_id} → Negotiated Curtailment",
-                    f"Requested {msg.requested_kw} kW; throttled by {curtailed} kW. Allocated remaining {allocated} kW."
-                )
+                self.log_event("WARN", f"[P{msg.priority}] {msg.home_id} → Curtailment", f"Requested {msg.requested_kw} kW; throttled by {curtailed} kW.")
                 if not msg.future_result.done():
                     msg.future_result.set_result(allocated)
-
             else:
                 self.shed_count += 1
-                self.log_event(
-                    "SHED",
-                    f"[P{msg.priority}] {msg.home_id} → Load Shed (0 kW)",
-                    f"Grid saturated (0.0 kW left). Deferred {msg.requested_kw} kW ({msg.appliance_surge}) to next cycle."
-                )
+                self.log_event("SHED", f"[P{msg.priority}] {msg.home_id} → Load Shed (0 kW)", f"Grid saturated. Deferred {msg.requested_kw} kW.")
                 if not msg.future_result.done():
                     msg.future_result.set_result(0.0)
 
@@ -140,14 +115,9 @@ async def serve_frontend():
     return "<h3>Frontend public/index.html not found</h3>"
 
 
-@app.get("/api/simulate")
-async def run_simulation(
-    capacity: float = Query(default=110.0, ge=20.0, le=500.0),
-    surge_mode: str = Query(default="peak")
-):
+async def handle_simulation(capacity: float, surge_mode: str):
     broker = CentralGridBroker(capacity_kw=capacity)
 
-    # Virtual Smart Home Nodes: (ID, Type, Base kW, Priority, Possible Surges)
     virtual_nodes = [
         ("NODE-01 • St. Jude Hospital", "Critical Medical", 24.0, 1, [("ICU Life Support", 6.0), ("MRI Scanner", 12.0)]),
         ("NODE-02 • Metro Fire & Rescue", "Emergency Ops", 14.0, 1, [("Dispatch Bay", 4.0), ("Fleet Charger", 8.0)]),
@@ -162,15 +132,13 @@ async def run_simulation(
     sim_start = time.time()
 
     async def virtual_smart_home(idx: int, hid: str, htype: str, base_kw: float, prio: int, surges: list):
-        # Asynchronous network arrival jitter
         await asyncio.sleep(random.uniform(0.002, 0.025))
-        
         if surge_mode == "extreme":
             appliance, surge_kw = surges[0]
             surge_kw = round(surge_kw * 1.35, 1)
         elif surge_mode == "normal":
             appliance, surge_kw = surges[1]
-        else:  # peak
+        else:
             appliance, surge_kw = random.choice(surges)
 
         requested_kw = round(base_kw + surge_kw, 2)
@@ -180,33 +148,15 @@ async def run_simulation(
         allocated_kw = await broker.publish_telemetry(msg_id, hid, htype, appliance, requested_kw, prio)
         wait_ms = round((time.time() - enqueue_ts) * 1000, 2)
 
-        if allocated_kw == requested_kw:
-            status = "Allocated"
-        elif allocated_kw > 0:
-            status = "Curtailed"
-        else:
-            status = "Shed"
+        status = "Allocated" if allocated_kw == requested_kw else ("Curtailed" if allocated_kw > 0 else "Shed")
 
         return {
-            "msg_id": msg_id,
-            "home_id": hid,
-            "home_type": htype,
-            "priority": prio,
-            "appliance": appliance,
-            "requested_kw": requested_kw,
-            "allocated_kw": allocated_kw,
-            "curtailed_kw": round(requested_kw - allocated_kw, 2),
-            "status": status,
-            "wait_ms": wait_ms
+            "msg_id": msg_id, "home_id": hid, "home_type": htype, "priority": prio,
+            "appliance": appliance, "requested_kw": requested_kw, "allocated_kw": allocated_kw,
+            "curtailed_kw": round(requested_kw - allocated_kw, 2), "status": status, "wait_ms": wait_ms
         }
 
-    # Spawn all virtual nodes concurrently
-    tasks = [
-        asyncio.create_task(virtual_smart_home(i, n[0], n[1], n[2], n[3], n[4]))
-        for i, n in enumerate(virtual_nodes)
-    ]
-
-    # Allow packets to arrive in the priority heap queue
+    tasks = [asyncio.create_task(virtual_smart_home(i, n[0], n[1], n[2], n[3], n[4])) for i, n in enumerate(virtual_nodes)]
     await asyncio.sleep(0.04)
     await broker.negotiate_and_schedule()
 
@@ -219,9 +169,8 @@ async def run_simulation(
     grid_utilization = round((total_allocated / capacity) * 100, 1)
     demand_ratio = round((total_demanded / capacity) * 100, 1)
 
-    # Queuing Theory Metrics (M/M/1 Approximation)
-    arrival_rate_lambda = round(len(nodes_data) / total_window, 1)  # msgs/sec
-    service_rate_mu = round(len(nodes_data) / broker.service_time_total, 1)  # msgs/sec
+    arrival_rate_lambda = round(len(nodes_data) / total_window, 1)
+    service_rate_mu = round(len(nodes_data) / broker.service_time_total, 1)
     avg_wait_ms = round((broker.total_wait_time / len(nodes_data)) * 1000, 2)
 
     return {
@@ -241,3 +190,12 @@ async def run_simulation(
         "nodes": nodes_data,
         "logs": broker.negotiation_logs
     }
+
+# Multiple route aliases to ensure Vercel and local routing never mismatch
+@app.get("/api/simulate")
+async def run_sim_api(capacity: float = Query(default=110.0, ge=20.0, le=500.0), surge_mode: str = Query(default="peak")):
+    return await handle_simulation(capacity, surge_mode)
+
+@app.get("/simulate")
+async def run_sim_root(capacity: float = Query(default=110.0, ge=20.0, le=500.0), surge_mode: str = Query(default="peak")):
+    return await handle_simulation(capacity, surge_mode)

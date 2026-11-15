@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GridPulse • Smart Grid Load Balancer</title>
+  <style>
+    :root {
+      /* Peach Glow */
+      --peach-glow-50: #fff1e5;
+      --peach-glow-100: #ffe4cc;
+      --peach-glow-200: #ffc999;
+      --peach-glow-300: #ffad66;
+      --peach-glow-400: #ff9233;
+      --peach-glow-500: #ff7700;
+      --peach-glow-600: #cc5f00;
+      --peach-glow-700: #994700;
+      --peach-glow-800: #663000;
+      --peach-glow-900: #331800;
+      --peach-glow-950: #241100;
+
+      /* Mustard */
+      --mustard-50: #fffae5;
+      --mustard-100: #fff6cc;
+      --mustard-200: #ffec99;
+      --mustard-300: #ffe366;
+      --mustard-400: #ffda33;
+      --mustard-500: #ffd000;
+      --mustard-600: #cca700;
+      --mustard-700: #997d00;
+      --mustard-800: #665300;
+      --mustard-900: #332a00;
+      --mustard-950: #241d00;
+
+      /* Champagne Mist */
+      --champagne-mist-50: #fff4e5;
+      --champagne-mist-100: #ffe8cc;
+      --champagne-mist-200: #ffd199;
+      --champagne-mist-300: #ffba66;
+      --champagne-mist-400: #ffa333;
+      --champagne-mist-500: #ff8c00;
+      --champagne-mist-600: #cc7000;
+      --champagne-mist-700: #995400;
+      --champagne-mist-800: #663800;
+      --champagne-mist-900: #331c00;
+      --champagne-mist-950: #241400;
+
+      /* Cherry Blossom */
+      --cherry-blossom-50: #ffe5ea;
+      --cherry-blossom-100: #ffccd5;
+      --cherry-blossom-200: #ff99ac;
+      --cherry-blossom-300: #ff6682;
+      --cherry-blossom-400: #ff3358;
+      --cherry-blossom-500: #ff002f;
+      --cherry-blossom-600: #cc0025;
+      --cherry-blossom-700: #99001c;
+      --cherry-blossom-800: #660013;
+      --cherry-blossom-900: #330009;
+      --cherry-blossom-950: #240007;
+
+      /* Crayola Blue */
+      --crayola-blue-50: #e5eeff;
+      --crayola-blue-100: #ccdcff;
+      --crayola-blue-200: #99b9ff;
+      --crayola-blue-300: #6696ff;
+      --crayola-blue-400: #3374ff;
+      --crayola-blue-500: #0051ff;
+      --crayola-blue-600: #0041cc;
+      --crayola-blue-700: #003099;
+      --crayola-blue-800: #002066;
+      --crayola-blue-900: #001033;
+      --crayola-blue-950: #000b24;
+
+      /* Semantic Theme Mapping */
+      --bg-base: var(--crayola-blue-950);
+      --bg-elevated: var(--crayola-blue-900);
+      --bg-card: var(--crayola-blue-800);
+      --border: var(--crayola-blue-700);
+      --text-main: var(--champagne-mist-50);
+      --text-muted: var(--crayola-blue-200);
+      --grad-primary: linear-gradient(135deg, var(--peach-glow-500) 0%, var(--champagne-mist-500) 50%, var(--mustard-500) 100%);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-base);
+      background-image:
+        radial-gradient(circle at 12% 10%, rgba(255, 119, 0, 0.14), transparent 38%),
+        radial-gradient(circle at 88% 85%, rgba(0, 81, 255, 0.22), transparent 40%);
+      color: var(--text-main);
+      min-height: 100vh;
+      padding: 1.75rem;
+    }
+
+    .wrapper {
+      max-width: 1240px;
+      margin: 0 auto;
+    }
+
+    /* Top Header */
+    .topbar {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1.25rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 1.75rem;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.9rem;
+    }
+
+    .brand-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: var(--grad-primary);
+      display: grid;
+      place-items: center;
+      color: var(--peach-glow-950);
+      font-weight: 900;
+      font-size: 1.3rem;
+      box-shadow: 0 0 24px rgba(255, 119, 0, 0.35);
+    }
+
+    .brand h1 {
+      font-size: 1.55rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      background: var(--grad-primary);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-top: 0.15rem;
+    }
+
+    /* Control Deck */
+    .control-deck {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.85rem;
+      background: var(--bg-elevated);
+      padding: 0.75rem 1rem;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .control-group label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    input[type="range"] {
+      accent-color: var(--peach-glow-500);
+      cursor: pointer;
+      width: 115px;
+    }
+
+    .cap-badge {
+      background: var(--peach-glow-900);
+      border: 1px solid var(--peach-glow-600);
+      padding: 0.25rem 0.55rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--mustard-300);
+      min-width: 68px;
+      text-align: center;
+    }
+
+    select {
+      background: var(--bg-card);
+      color: var(--text-main);
+      border: 1px solid var(--border);
+      padding: 0.45rem 0.75rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      outline: none;
+    }
+
+    .btn {
+      border: none;
+      border-radius: 9px;
+      padding: 0.6rem 1.15rem;
+      font-weight: 700;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: transform 0.15s ease, opacity 0.15s ease;
+    }
+
+    .btn:active { transform: scale(0.97); }
+
+    .btn-primary {
+      background: var(--grad-primary);
+      color: var(--peach-glow-950);
+      box-shadow: 0 4px 16px rgba(255, 140, 0, 0.3);
+    }
+
+    .btn-stream {
+      background: var(--bg-card);
+      color: var(--text-main);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+
+    .btn-stream.active {
+      border-color: var(--mustard-500);
+      color: var(--mustard-300);
+      background: var(--mustard-900);
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--crayola-blue-300);
+    }
+
+    .btn-stream.active .dot {
+      background: var(--mustard-400);
+      box-shadow: 0 0 8px var(--mustard-400);
+      animation: pulse 1.2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.35; }
+    }
+
+    /* KPI Grid */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .kpi-card {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.15rem 1.25rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .kpi-card::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: var(--grad-primary);
+    }
+
+    .kpi-label {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 0.45rem;
+    }
+
+    .kpi-value {
+      font-size: 1.65rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--champagne-mist-100);
+    }
+
+    .kpi-sub {
+      font-size: 0.78rem;
+      color: var(--crayola-blue-200);
+      margin-top: 0.35rem;
+    }
+
+    /* Grid Capacity Bar */
+    .capacity-banner {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.15rem 1.35rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .cap-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.65rem;
+      font-size: 0.88rem;
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 14px;
+      background: var(--crayola-blue-950);
+      border: 1px solid var(--crayola-blue-800);
+      border-radius: 999px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--grad-primary);
+      border-radius: 999px;
+      transition: width 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    /* Main Split Layout */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1.65fr 1fr;
+      gap: 1.25rem;
+    }
+
+    @media (max-width: 960px) {
+      .main-grid { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel-header {
+      padding: 1rem 1.25rem;
+      background: var(--crayola-blue-800);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .panel-header h2 {
+      font-size: 0.98rem;
+      font-weight: 700;
+      color: var(--champagne-mist-50);
+    }
+
+    .pill-tag {
+      font-size: 0.72rem;
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      background: var(--peach-glow-900);
+      color: var(--peach-glow-300);
+      border: 1px solid var(--peach-glow-600);
+      font-weight: 600;
+    }
+
+    /* Table Styles */
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      padding: 0.85rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--crayola-blue-800);
+      font-size: 0.86rem;
+    }
+
+    th {
+      color: var(--crayola-blue-200);
+      font-size: 0.74rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: var(--crayola-blue-950);
+    }
+
+    tr:hover td { background: rgba(0, 81, 255, 0.14); }
+
+    .prio-badge {
+      display: inline-block;
+      padding: 0.2rem 0.5rem;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 0.75rem;
+    }
+    .p1 {
+      background: var(--cherry-blossom-900);
+      color: var(--cherry-blossom-200);
+      border: 1px solid var(--cherry-blossom-500);
+    }
+    .p2 {
+      background: var(--peach-glow-900);
+      color: var(--peach-glow-200);
+      border: 1px solid var(--peach-glow-500);
+    }
+    .p3 {
+      background: var(--crayola-blue-800);
+      color: var(--crayola-blue-200);
+      border: 1px solid var(--crayola-blue-500);
+    }
+
+    .status-badge {
+      padding: 0.22rem 0.6rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+    .st-allocated {
+      background: var(--crayola-blue-800);
+      color: var(--crayola-blue-200);
+      border: 1px solid var(--crayola-blue-400);
+    }
+    .st-curtailed {
+      background: var(--mustard-900);
+      color: var(--mustard-300);
+      border: 1px solid var(--mustard-500);
+    }
+    .st-shed {
+      background: var(--cherry-blossom-900);
+      color: var(--cherry-blossom-300);
+      border: 1px solid var(--cherry-blossom-500);
+    }
+
+    .mini-bar {
+      width: 85px;
+      height: 6px;
+      background: var(--crayola-blue-950);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+    .mini-bar-fill {
+      height: 100%;
+      background: var(--grad-primary);
+    }
+
+    /* Broker Terminal Logs */
+    .terminal-body {
+      padding: 1rem;
+      background: var(--crayola-blue-950);
+      font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+      font-size: 0.8rem;
+      line-height: 1.5;
+      max-height: 440px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+    }
+
+    .log-entry {
+      padding: 0.6rem 0.75rem;
+      border-radius: 8px;
+      background: var(--crayola-blue-900);
+      border-left: 3px solid var(--crayola-blue-400);
+    }
+    .log-entry.WARN {
+      border-left-color: var(--mustard-500);
+      background: var(--mustard-950);
+    }
+    .log-entry.SHED {
+      border-left-color: var(--cherry-blossom-500);
+      background: var(--cherry-blossom-950);
+    }
+    .log-entry.PRIORITY {
+      border-left-color: var(--peach-glow-500);
+      background: var(--peach-glow-950);
+    }
+
+    .log-top {
+      display: flex;
+      justify-content: space-between;
+      font-weight: 700;
+      margin-bottom: 0.2rem;
+      color: var(--champagne-mist-100);
+    }
+    .log-time { color: var(--crayola-blue-300); font-size: 0.72rem; }
+    .log-detail { color: var(--champagne-mist-200); font-size: 0.76rem; }
+
+    /* Queuing Theory Footer Box */
+    .qt-box {
+      padding: 0.9rem 1.25rem;
+      background: var(--crayola-blue-950);
+      border-top: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.5rem;
+      font-size: 0.78rem;
+    }
+    .qt-item span { display: block; color: var(--crayola-blue-300); font-size: 0.7rem; }
+    .qt-item strong { color: var(--mustard-400); font-size: 0.88rem; }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <!-- Top Header & Controls -->
+    <div class="topbar">
+      <div class="brand">
+        <div class="brand-icon">⚡</div>
+        <div>
+          <h1>GridPulse Load Balancer</h1>
+          <p>Central Broker Priority Scheduling & Queuing Theory Simulator</p>
+        </div>
+      </div>
+
+      <div class="control-deck">
+        <div class="control-group">
+          <label>Grid Capacity Ceiling</label>
+          <div class="slider-row">
+            <input type="range" id="capSlider" min="40" max="220" step="5" value="110" oninput="updateCapLabel(this.value)" />
+            <span class="cap-badge" id="capDisplay">110 kW</span>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <label>Demand Scenario</label>
+          <select id="surgeMode">
+            <option value="normal">Off-Peak / Normal Load</option>
+            <option value="peak" selected>Evening Peak Surge</option>
+            <option value="extreme">Extreme Heatwave Overload</option>
+          </select>
+        </div>
+
+        <button class="btn btn-primary" onclick="runSimulation()">Dispatch Cycle</button>
+        <button class="btn btn-stream" id="streamBtn" onclick="toggleStream()">
+          <span class="dot"></span>
+          <span id="streamText">Live Auto-Stream</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">Total Node Demand</div>
+        <div class="kpi-value" id="kpiDemand">-- kW</div>
+        <div class="kpi-sub" id="kpiDemandRatio">Evaluating virtual nodes...</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Broker Power Allocated</div>
+        <div class="kpi-value" id="kpiAllocated">-- kW</div>
+        <div class="kpi-sub" id="kpiUtil">Grid Utilization: --%</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Load Shed / Curtailed</div>
+        <div class="kpi-value" id="kpiShed">--</div>
+        <div class="kpi-sub" id="kpiCurtailed">Nodes throttled or deferred</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Mean Queue Wait (Wq)</div>
+        <div class="kpi-value" id="kpiWait">-- ms</div>
+        <div class="kpi-sub">Min-Heap Priority Arbitration</div>
+      </div>
+    </div>
+
+    <!-- Grid Capacity Utilization Bar -->
+    <div class="capacity-banner">
+      <div class="cap-header">
+        <span><strong>Central Substation Load Allocation</strong> (Allocated vs. Physical Grid Ceiling)</span>
+        <span id="barRatioText" style="color: var(--mustard-400); font-weight: 700;">0 / 110 kW</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" id="capProgress"></div>
+      </div>
+    </div>
+
+    <!-- Main Dashboard Split -->
+    <div class="main-grid">
+      <!-- Virtual Smart Homes Table -->
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Virtual Smart Home Nodes (8 Active)</h2>
+          <span class="pill-tag">Priority Heap: P1 → P3</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Node & Appliance Load</th>
+                <th>Priority</th>
+                <th>Requested</th>
+                <th>Allocated</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="nodesBody">
+              <tr><td colspan="5" style="text-align:center; color: var(--text-muted); padding: 2rem;">Initializing virtual nodes...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="qt-box">
+          <div class="qt-item">
+            <span>Arrival Rate (λ)</span>
+            <strong id="qtLambda">-- msg/s</strong>
+          </div>
+          <div class="qt-item">
+            <span>Broker Service Rate (μ)</span>
+            <strong id="qtMu">-- msg/s</strong>
+          </div>
+          <div class="qt-item">
+            <span>Queuing Discipline</span>
+            <strong id="qtDiscipline">Min-Heap + FIFO</strong>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Broker Negotiation Feed -->
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Broker Negotiation Log</h2>
+          <span class="pill-tag">Real-Time Trace</span>
+        </div>
+        <div class="terminal-body" id="brokerLogs">
+          <div class="log-entry">Awaiting telemetry packets...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let streamInterval = null;
+
+    function updateCapLabel(val) {
+      document.getElementById('capDisplay').textContent = `${val} kW`;
+    }
+
+    function toggleStream() {
+      const btn = document.getElementById('streamBtn');
+      const txt = document.getElementById('streamText');
+      if (streamInterval) {
+        clearInterval(streamInterval);
+        streamInterval = null;
+        btn.classList.remove('active');
+        txt.textContent = 'Live Auto-Stream';
+      } else {
+        runSimulation();
+        streamInterval = setInterval(runSimulation, 2500);
+        btn.classList.add('active');
+        txt.textContent = 'Streaming Live (2.5s)';
+      }
+    }
+
+    async function runSimulation() {
+      const cap = document.getElementById('capSlider').value;
+      const mode = document.getElementById('surgeMode').value;
+
+      try {
+        const res = await fetch(`/api/simulate?capacity=${cap}&surge_mode=${mode}`);
+        const data = await res.json();
+
+        // Update KPIs
+        document.getElementById('kpiDemand').textContent = `${data.total_demanded_kw} kW`;
+        const overloadDiff = (data.total_demanded_kw - data.capacity_kw).toFixed(1);
+        document.getElementById('kpiDemandRatio').textContent =
+          overloadDiff > 0
+            ? `⚠️ Overload: +${overloadDiff} kW over limit`
+            : `✅ Within capacity (${data.demand_ratio_pct}% load)`;
+
+        document.getElementById('kpiAllocated').textContent = `${data.total_allocated_kw} kW`;
+        document.getElementById('kpiUtil').textContent = `Substation Utilization: ${data.grid_utilization_pct}%`;
+
+        document.getElementById('kpiShed').textContent = `${data.shed_count} Shed / ${data.curtailed_count} Curtailed`;
+        document.getElementById('kpiCurtailed').textContent =
+          data.shed_count > 0 ? 'Low-priority loads deferred' : 'All nodes served';
+
+        document.getElementById('kpiWait').textContent = `${data.queuing_metrics.avg_wait_ms} ms`;
+
+        // Update Capacity Bar
+        const pct = Math.min(100, data.grid_utilization_pct);
+        document.getElementById('capProgress').style.width = `${pct}%`;
+        document.getElementById('barRatioText').textContent =
+          `${data.total_allocated_kw} / ${data.capacity_kw} kW (${data.grid_utilization_pct}%)`;
+
+        // Update Queuing Theory Footer
+        document.getElementById('qtLambda').textContent = `${data.queuing_metrics.arrival_rate_lambda} msg/s`;
+        document.getElementById('qtMu').textContent = `${data.queuing_metrics.service_rate_mu} msg/s`;
+
+        // Update Smart Home Nodes Table
+        const tbody = document.getElementById('nodesBody');
+        tbody.innerHTML = data.nodes.map(n => {
+          const prioClass = n.priority === 1 ? 'p1' : (n.priority === 2 ? 'p2' : 'p3');
+          const prioLabel = n.priority === 1 ? 'P1 • Critical' : (n.priority === 2 ? 'P2 • High' : 'P3 • Standard');
+          
+          let stClass = 'st-allocated';
+          if (n.status === 'Curtailed') stClass = 'st-curtailed';
+          if (n.status === 'Shed') stClass = 'st-shed';
+
+          const allocPct = n.requested_kw > 0 ? Math.round((n.allocated_kw / n.requested_kw) * 100) : 0;
+
+          return `
+            <tr>
+              <td>
+                <div style="font-weight:700; color:var(--champagne-mist-50);">${n.home_id}</div>
+                <div style="font-size:0.75rem; color:var(--text-muted);">${n.home_type} • ${n.appliance}</div>
+              </td>
+              <td><span class="prio-badge ${prioClass}">${prioLabel}</span></td>
+              <td style="font-weight:600; color:var(--champagne-mist-100);">${n.requested_kw} kW</td>
+              <td>
+                <div style="font-weight:700; color:var(--mustard-300);">${n.allocated_kw} kW <span style="font-size:0.72rem; color:var(--text-muted);">(${allocPct}%)</span></div>
+                <div class="mini-bar"><div class="mini-bar-fill" style="width:${allocPct}%"></div></div>
+              </td>
+              <td><span class="status-badge ${stClass}">${n.status}</span></td>
+            </tr>
+          `;
+        }).join('');
+
+        // Update Broker Negotiation Logs
+        const logsContainer = document.getElementById('brokerLogs');
+        logsContainer.innerHTML = data.logs.map(l => `
+          <div class="log-entry ${l.level}">
+            <div class="log-top">
+              <span>${l.title}</span>
+              <span class="log-time">${l.time}</span>
+            </div>
+            <div class="log-detail">${l.detail}</div>
+          </div>
+        `).join('');
+
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    window.onload = runSimulation;
+  </script>
+</body>
+</html>

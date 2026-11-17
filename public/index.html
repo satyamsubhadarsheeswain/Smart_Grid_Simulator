@@ -531,25 +531,6 @@
       }
     }
 
-    // Initial load uses GET /api/simulate to guarantee zero-error loading on serverless/Vercel
-    async function initSimulation() {
-      try {
-        const cap = parseFloat(document.getElementById('capSlider').value);
-        const temp = parseFloat(document.getElementById('tempSlider').value);
-        const mode = document.getElementById('surgeMode').value;
-
-        const res = await fetch(`/api/simulate?capacity=${cap}&ambient_temp=${temp}&surge_mode=${mode}`);
-        if (!res.ok) throw new Error(`Server returned status ${res.status}`);
-
-        const data = await res.json();
-        updateDashboard(data);
-      } catch (err) {
-        console.error("Init error:", err);
-        // Fallback to POST if GET fails
-        runStep();
-      }
-    }
-
     function updateDashboard(data) {
       nodesState = data.nodes;
       simMinutes = data.next_sim_minutes;
@@ -636,7 +617,12 @@
       `).join('');
     }
 
-    window.addEventListener('DOMContentLoaded', initSimulation);
+    // Render immediately using server-injected initial data
+    window.addEventListener('DOMContentLoaded', () => {
+      if (window.INITIAL_DATA) {
+        updateDashboard(window.INITIAL_DATA);
+      }
+    });
   </script>
 </body>
 </html>

@@ -8,6 +8,7 @@ import time
 import os
 from dataclasses import dataclass, field
 from typing import List, Dict, Any
+import json
 
 app = FastAPI()
 
@@ -123,17 +124,6 @@ class CentralGridBroker:
         self.service_time_total = max(0.001, time.time() - process_start)
 
 
-@app.get("/", response_class=HTMLResponse)
-async def serve_frontend():
-    html_path = os.path.join(os.path.dirname(__file__), "..", "public", "index.html")
-    if not os.path.exists(html_path):
-        html_path = "public/index.html"
-    if os.path.exists(html_path):
-        with open(html_path, "r", encoding="utf-8") as f:
-            return f.read()
-    return "<h3>Frontend public/index.html not found</h3>"
-
-
 async def execute_simulation_logic(
     capacity: float = 110.0,
     sim_minutes: int = 1080,
@@ -184,7 +174,7 @@ async def execute_simulation_logic(
     sim_start = time.time()
 
     async def run_virtual_node(idx: int, node: Dict[str, Any]):
-        await asyncio.sleep(random.uniform(0.001, 0.015))
+        await asyncio.sleep(0.001)
         base_kw = float(node.get("base_kw", 12.0))
         base_prio = int(node.get("priority", 3))
         shed_streak = int(node.get("shed_streak", 0))
@@ -259,7 +249,7 @@ async def execute_simulation_logic(
         }
 
     tasks = [asyncio.create_task(run_virtual_node(i, n)) for i, n in enumerate(nodes_state)]
-    await asyncio.sleep(0.03)
+    await asyncio.sleep(0.01)
     await broker.negotiate_and_schedule(capacity, total_solar_export, transformer_trip)
 
     updated_nodes = await asyncio.gather(*tasks)
@@ -301,6 +291,26 @@ async def execute_simulation_logic(
         "nodes": updated_nodes,
         "logs": broker.negotiation_logs
     }
+
+@app.get("/", response_class=HTMLResponse)
+async def serve_frontend():
+    html_path = os.path.join(os.path.dirname(__file__), "..", "public", "index.html")
+    if not os.path.exists(html_path):
+        html_path = "public/index.html"
+    
+    if os.path.exists(html_path):
+        # Generate initial simulation data on the server side
+        initial_data = await execute_simulation_logic()
+        
+        with open(html_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+            
+        # Inject initial data directly into the HTML so it renders instantly without waiting for fetch
+        injection_tag = f"<script>window.INITIAL_DATA = {json.dumps(initial_data)};</script></head>"
+        html_content = html_content.replace("</head>", injection_tag)
+        return html_content
+        
+    return "<h3>Frontend public/index.html not found</h3>"
 
 @app.get("/api/simulate")
 async def get_simulate(capacity: float = 110.0, surge_mode: str = "peak", ambient_temp: float = 32.0):

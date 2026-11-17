@@ -8,9 +8,8 @@ import time
 import os
 from dataclasses import dataclass, field
 from typing import List, Dict, Any
-import json
 
-app = FastAPI(title="SynapseWatt Load Balancer")
+app = FastAPI()
 
 @dataclass(order=True)
 class PowerMessage:
@@ -124,35 +123,34 @@ class CentralGridBroker:
         self.service_time_total = max(0.001, time.time() - process_start)
 
 
-async def execute_simulation_logic(
-    capacity: float = 110.0,
-    sim_minutes: int = 1080,
-    surge_mode: str = "peak",
-    transformer_trip: bool = False,
-    cloud_cover: bool = False,
-    ambient_temp: float = 32.0,
-    nodes_state: list = None
-):
+@app.get("/", response_class=HTMLResponse)
+async def serve_frontend():
+    html_path = os.path.join(os.path.dirname(__file__), "..", "public", "index.html")
+    if not os.path.exists(html_path):
+        html_path = "public/index.html"
+    if os.path.exists(html_path):
+        with open(html_path, "r", encoding="utf-8") as f:
+            return f.read()
+    return "<h3>Frontend public/index.html not found</h3>"
+
+
+async def execute_simulation_logic(capacity: float = 110.0, sim_minutes: int = 1080, surge_mode: str = "peak", transformer_trip: bool = False, cloud_cover: bool = False, nodes_state: list = None):
     if nodes_state is None:
         nodes_state = [
-            { "id": 1, "home_id": "St. Jude Hospital", "home_type": "Critical Medical", "base_kw": 22, "priority": 1, "has_solar": False, "shed_streak": 0 },
-            { "id": 2, "home_id": "Metro Fire & Rescue", "home_type": "Emergency Ops", "base_kw": 14, "priority": 1, "has_solar": False, "shed_streak": 0 },
-            { "id": 3, "home_id": "Villa Solaris", "home_type": "Solar + EV Prosumer", "base_kw": 13, "priority": 2, "has_solar": True, "shed_streak": 0 },
-            { "id": 4, "home_id": "GreenTech Duplex", "home_type": "Solar + EV Prosumer", "base_kw": 12, "priority": 2, "has_solar": True, "shed_streak": 0 },
-            { "id": 5, "home_id": "Maple Residency", "home_type": "Standard Residential", "base_kw": 11, "priority": 3, "has_solar": False, "shed_streak": 0 },
-            { "id": 6, "home_id": "Oakwood Apt 4B", "home_type": "Standard Residential", "base_kw": 10, "priority": 3, "has_solar": False, "shed_streak": 0 },
-            { "id": 7, "home_id": "Pinecrest Home", "home_type": "Standard Residential", "base_kw": 12, "priority": 3, "has_solar": False, "shed_streak": 0 },
-            { "id": 8, "home_id": "Cedar Smart Loft", "home_type": "Standard Residential", "base_kw": 9, "priority": 3, "has_solar": False, "shed_streak": 0 }
+            { id: 1, home_id: "St. Jude Hospital", home_type: "Critical Medical", base_kw: 22, priority: 1, has_solar: False, shed_streak: 0 },
+            { id: 2, home_id: "Metro Fire & Rescue", home_type: "Emergency Ops", base_kw: 14, priority: 1, has_solar: False, shed_streak: 0 },
+            { id: 3, home_id: "Villa Solaris", home_type: "Solar + EV Prosumer", base_kw: 13, priority: 2, has_solar: True, shed_streak: 0 },
+            { id: 4, home_id: "GreenTech Duplex", home_type: "Solar + EV Prosumer", base_kw: 12, priority: 2, has_solar: True, shed_streak: 0 },
+            { id: 5, home_id: "Maple Residency", home_type: "Standard Residential", base_kw: 11, priority: 3, has_solar: False, shed_streak: 0 },
+            { id: 6, home_id: "Oakwood Apt 4B", home_type: "Standard Residential", base_kw: 10, priority: 3, has_solar: False, shed_streak: 0 },
+            { id: 7, home_id: "Pinecrest Home", home_type: "Standard Residential", base_kw: 12, priority: 3, has_solar: False, shed_streak: 0 },
+            { id: 8, home_id: "Cedar Smart Loft", home_type: "Standard Residential", base_kw: 9, priority: 3, has_solar: False, shed_streak: 0 }
         ]
 
     hour = (sim_minutes % 1440) / 60.0
     morning_curve = 0.25 * math.exp(-((hour - 8.5) ** 2) / 4.5)
     evening_curve = 0.45 * math.exp(-((hour - 19.5) ** 2) / 6.0)
     diurnal_factor = 0.85 + morning_curve + evening_curve
-
-    temp_multiplier = 1.0
-    if ambient_temp > 27.0:
-        temp_multiplier = 1.0 + (ambient_temp - 27.0) * 0.045 + max(0.0, (ambient_temp - 38.0) * 0.08)
 
     solar_irradiance = 0.0
     if not cloud_cover and 6.0 <= hour <= 18.0:
@@ -174,7 +172,7 @@ async def execute_simulation_logic(
     sim_start = time.time()
 
     async def run_virtual_node(idx: int, node: Dict[str, Any]):
-        await asyncio.sleep(0.001)
+        await asyncio.sleep(random.uniform(0.001, 0.015))
         base_kw = float(node.get("base_kw", 12.0))
         base_prio = int(node.get("priority", 3))
         shed_streak = int(node.get("shed_streak", 0))
@@ -192,15 +190,15 @@ async def execute_simulation_logic(
             surge_kw = round(base_kw * 1.15, 2)
         elif surge_mode == "extreme":
             appliance = "Heatwave Max HVAC + EV"
-            surge_kw = round(base_kw * 0.9, 2)
+            surge_kw = round(base_kw * random.uniform(0.75, 1.1), 2)
         elif surge_mode == "normal":
             appliance = "Standard Baseline"
-            surge_kw = round(base_kw * 0.15, 2)
+            surge_kw = round(base_kw * random.uniform(0.05, 0.25), 2)
         else:
             appliance = random.choice(["EV Level-2 Charge", "Heat Pump Surge", "Dryer + HVAC", "Normal Load"])
-            surge_kw = round(base_kw * 0.5, 2)
+            surge_kw = round(base_kw * random.uniform(0.25, 0.75), 2)
 
-        requested_kw = round(((base_kw * diurnal_factor) + surge_kw) * temp_multiplier, 2)
+        requested_kw = round((base_kw * diurnal_factor) + surge_kw, 2)
         msg_id = f"MSG-{100 + idx}"
 
         msg = PowerMessage(
@@ -249,7 +247,7 @@ async def execute_simulation_logic(
         }
 
     tasks = [asyncio.create_task(run_virtual_node(i, n)) for i, n in enumerate(nodes_state)]
-    await asyncio.sleep(0.01)
+    await asyncio.sleep(0.03)
     await broker.negotiate_and_schedule(capacity, total_solar_export, transformer_trip)
 
     updated_nodes = await asyncio.gather(*tasks)
@@ -292,26 +290,10 @@ async def execute_simulation_logic(
         "logs": broker.negotiation_logs
     }
 
-@app.get("/", response_class=HTMLResponse)
-async def serve_frontend():
-    html_path = os.path.join(os.path.dirname(__file__), "..", "public", "index.html")
-    if not os.path.exists(html_path):
-        html_path = "public/index.html"
-    
-    if os.path.exists(html_path):
-        initial_data = await execute_simulation_logic()
-        with open(html_path, "r", encoding="utf-8") as f:
-            html_content = f.read()
-            
-        injection_tag = f"<script>window.INITIAL_DATA = {json.dumps(initial_data)};</script></head>"
-        html_content = html_content.replace("</head>", injection_tag)
-        return html_content
-        
-    return "<h3>Frontend public/index.html not found</h3>"
-
+# Accept both GET and POST so it never fails on initial browser load
 @app.get("/api/simulate")
-async def get_simulate(capacity: float = 110.0, surge_mode: str = "peak", ambient_temp: float = 32.0):
-    return await execute_simulation_logic(capacity=capacity, surge_mode=surge_mode, ambient_temp=ambient_temp)
+async def get_simulate(capacity: float = 110.0, surge_mode: str = "peak"):
+    return await execute_simulation_logic(capacity=capacity, surge_mode=surge_mode)
 
 @app.post("/api/simulate")
 async def post_simulate(payload: Dict[str, Any] = Body(...)):
@@ -321,6 +303,5 @@ async def post_simulate(payload: Dict[str, Any] = Body(...)):
         surge_mode=payload.get("surge_mode", "peak"),
         transformer_trip=bool(payload.get("transformer_trip", False)),
         cloud_cover=bool(payload.get("cloud_cover", False)),
-        ambient_temp=float(payload.get("ambient_temp", 32.0)),
         nodes_state=payload.get("nodes", None)
     )

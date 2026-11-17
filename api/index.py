@@ -1,6 +1,7 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Body
 from fastapi.responses import HTMLResponse
 import asyncio
+import math
 import random
 import heapq
 import time
@@ -12,18 +13,19 @@ app = FastAPI()
 
 @dataclass(order=True)
 class PowerMessage:
-    priority: int  # 1 = Critical, 2 = High, 3 = Standard
+    effective_priority: int
     timestamp: float = field(compare=True)
     msg_id: str = field(compare=False)
     home_id: str = field(compare=False)
-    home_type: str = field(compare=False)
-    appliance_surge: str = field(compare=False)
+    base_priority: int = field(compare=False)
+    aged: bool = field(compare=False)
+    appliance: str = field(compare=False)
     requested_kw: float = field(compare=False)
     future_result: asyncio.Future = field(compare=False, default=None)
 
 class CentralGridBroker:
-    def __init__(self, capacity_kw: float):
-        self.capacity_kw = capacity_kw
+    def __init__(self, effective_capacity_kw: float):
+        self.capacity_kw = effective_capacity_kw
         self.priority_queue: List[PowerMessage] = []
         self._lock = asyncio.Lock()
         self.total_messages = 0
@@ -41,50 +43,59 @@ class CentralGridBroker:
             "detail": detail
         })
 
-    async def publish_telemetry(self, msg_id: str, home_id: str, home_type: str, surge: str, requested_kw: float, priority: int) -> float:
+    async def publish_telemetry(self, msg: PowerMessage) -> float:
         loop = asyncio.get_running_loop()
-        fut = loop.create_future()
-        msg = PowerMessage(
-            priority=priority,
-            timestamp=time.time(),
-            msg_id=msg_id,
-            home_id=home_id,
-            home_type=home_type,
-            appliance_surge=surge,
-            requested_kw=requested_kw,
-            future_result=fut
-        )
+        msg.future_result = loop.create_future()
         async with self._lock:
             heapq.heappush(self.priority_queue, msg)
             self.total_messages += 1
-        return await fut
+        return await msg.future_result
 
-    async def negotiate_and_schedule(self):
+    async def negotiate_and_schedule(self, base_cap: float, solar_export: float, transformer_trip: bool):
         process_start = time.time()
         async with self._lock:
             if not self.priority_queue:
                 return
-            ordered_messages = []
+            ordered = []
             while self.priority_queue:
-                ordered_messages.append(heapq.heappop(self.priority_queue))
+                ordered.append(heapq.heappop(self.priority_queue))
 
-        total_demand = sum(m.requested_kw for m in ordered_messages)
-        self.log_event("INFO", "Broker Queue Snapshot", f"Ingested {len(ordered_messages)} node packets. Total Demand: {total_demand:.1f} kW vs Grid Cap: {self.capacity_kw:.1f} kW.")
+        total_demand = sum(m.requested_kw for m in ordered)
+        cap_note = f"Base {base_cap:.0f} kW"
+        if transformer_trip:
+            cap_note += " (-40% Transformer Fault)"
+        if solar_export > 0:
+            cap_note += f" + {solar_export:.1f} kW Solar Feed-In"
+
+        self.log_event(
+            "INFO",
+            f"Broker Cycle • Effective Cap: {self.capacity_kw:.1f} kW",
+            f"{cap_note} | Total Demand: {total_demand:.1f} kW across {len(ordered)} nodes."
+        )
 
         if total_demand > self.capacity_kw:
             deficit = total_demand - self.capacity_kw
-            self.log_event("WARN", "Grid Overload Detected", f"Demand exceeds capacity by {deficit:.1f} kW. Engaging Priority Heap Arbitration & Load Shedding.")
+            self.log_event(
+                "WARN",
+                f"Overload Alert (+{deficit:.1f} kW Deficit)",
+                "Engaging Min-Heap Priority Arbitration, Aging Boosts & Load Shedding."
+            )
 
         remaining_kw = self.capacity_kw
         now = time.time()
 
-        for msg in ordered_messages:
+        for msg in ordered:
             wait_sec = max(0.0001, now - msg.timestamp)
             self.total_wait_time += wait_sec
+            aging_tag = " [AGED BOOST]" if msg.aged else ""
 
             if remaining_kw >= msg.requested_kw:
                 remaining_kw -= msg.requested_kw
-                self.log_event("PRIORITY", f"[P{msg.priority}] {msg.home_id} → 100% Allocated", f"Granted {msg.requested_kw} kW ({msg.appliance_surge}). Remaining Headroom: {remaining_kw:.1f} kW.")
+                self.log_event(
+                    "PRIORITY",
+                    f"[P{msg.effective_priority}{aging_tag}] {msg.home_id} → 100% Served",
+                    f"Allocated {msg.requested_kw} kW ({msg.appliance}). Remaining: {remaining_kw:.1f} kW."
+                )
                 if not msg.future_result.done():
                     msg.future_result.set_result(msg.requested_kw)
             elif remaining_kw > 0:
@@ -92,12 +103,20 @@ class CentralGridBroker:
                 curtailed = round(msg.requested_kw - allocated, 2)
                 remaining_kw = 0.0
                 self.curtailed_count += 1
-                self.log_event("WARN", f"[P{msg.priority}] {msg.home_id} → Curtailment", f"Requested {msg.requested_kw} kW; throttled by {curtailed} kW.")
+                self.log_event(
+                    "WARN",
+                    f"[P{msg.effective_priority}{aging_tag}] {msg.home_id} → Curtailed",
+                    f"Requested {msg.requested_kw} kW; throttled by {curtailed} kW. Granted {allocated} kW."
+                )
                 if not msg.future_result.done():
                     msg.future_result.set_result(allocated)
             else:
                 self.shed_count += 1
-                self.log_event("SHED", f"[P{msg.priority}] {msg.home_id} → Load Shed (0 kW)", f"Grid saturated. Deferred {msg.requested_kw} kW.")
+                self.log_event(
+                    "SHED",
+                    f"[P{msg.effective_priority}] {msg.home_id} → Load Shed (0 kW)",
+                    f"Bus saturated. Deferred {msg.requested_kw} kW ({msg.appliance}) & incremented aging counter."
+                )
                 if not msg.future_result.done():
                     msg.future_result.set_result(0.0)
 
@@ -115,87 +134,54 @@ async def serve_frontend():
     return "<h3>Frontend public/index.html not found</h3>"
 
 
-async def handle_simulation(capacity: float, surge_mode: str):
-    broker = CentralGridBroker(capacity_kw=capacity)
+async def execute_tick(payload: Dict[str, Any]):
+    base_capacity = float(payload.get("capacity", 110.0))
+    sim_minutes = int(payload.get("sim_minutes", 1080))  # Default 18:00 (Evening Peak)
+    surge_mode = payload.get("surge_mode", "peak")
+    transformer_trip = bool(payload.get("transformer_trip", False))
+    cloud_cover = bool(payload.get("cloud_cover", False))
+    nodes_state = payload.get("nodes", [])
 
-    virtual_nodes = [
-        ("NODE-01 • St. Jude Hospital", "Critical Medical", 24.0, 1, [("ICU Life Support", 6.0), ("MRI Scanner", 12.0)]),
-        ("NODE-02 • Metro Fire & Rescue", "Emergency Ops", 14.0, 1, [("Dispatch Bay", 4.0), ("Fleet Charger", 8.0)]),
-        ("NODE-03 • Villa Solaris", "Smart EV + Battery", 12.0, 2, [("Level-2 EV Charger", 14.0), ("Heat Pump HVAC", 6.0)]),
-        ("NODE-04 • GreenTech Duplex", "Smart EV + Solar", 11.0, 2, [("Dual EV Fast Charge", 18.0), ("Base Load", 2.0)]),
-        ("NODE-05 • Maple Residency", "Standard Home", 10.0, 3, [("Central AC + Dryer", 15.0), ("Evening Cooking", 7.0)]),
-        ("NODE-06 • Oakwood Apt 4B", "Standard Home", 9.0, 3, [("Pool Heater + AC", 16.0), ("Normal Usage", 3.0)]),
-        ("NODE-07 • Pinecrest Home", "Standard Home", 11.0, 3, [("Electric Water Heater", 12.0), ("AC Surge", 14.0)]),
-        ("NODE-08 • Cedar Smart Loft", "Standard Home", 8.0, 3, [("Crypto/Home Lab", 15.0), ("Normal Usage", 2.5)]),
-    ]
+    # 1. Calculate Time-of-Day Diurnal Multiplier & Solar Irradiance
+    hour = (sim_minutes % 1440) / 60.0
+    # Morning peak (~8:30) and Evening peak (~19:30)
+    morning_curve = 0.25 * math.exp(-((hour - 8.5) ** 2) / 4.5)
+    evening_curve = 0.45 * math.exp(-((hour - 19.5) ** 2) / 6.0)
+    diurnal_factor = 0.85 + morning_curve + evening_curve
 
+    # Solar curve active between 06:00 and 18:00, peaking at 12:30
+    solar_irradiance = 0.0
+    if not cloud_cover and 6.0 <= hour <= 18.0:
+        solar_irradiance = max(0.0, math.sin(math.pi * (hour - 6.0) / 12.0))
+
+    total_solar_export = 0.0
+    for n in nodes_state:
+        if n.get("has_solar", False):
+            # Each solar home exports up to 12 kW at peak sun
+            node_solar = round(12.0 * solar_irradiance * random.uniform(0.9, 1.05), 2)
+            n["solar_gen_kw"] = node_solar
+            total_solar_export += node_solar
+        else:
+            n["solar_gen_kw"] = 0.0
+
+    # Effective Grid Capacity = Base (reduced 40% if Transformer Tripped) + Prosumer Solar Export
+    substation_cap = base_capacity * (0.6 if transformer_trip else 1.0)
+    effective_capacity = round(substation_cap + total_solar_export, 2)
+
+    broker = CentralGridBroker(effective_capacity_kw=effective_capacity)
     sim_start = time.time()
 
-    async def virtual_smart_home(idx: int, hid: str, htype: str, base_kw: float, prio: int, surges: list):
-        await asyncio.sleep(random.uniform(0.002, 0.025))
-        if surge_mode == "extreme":
-            appliance, surge_kw = surges[0]
-            surge_kw = round(surge_kw * 1.35, 1)
-        elif surge_mode == "normal":
-            appliance, surge_kw = surges[1]
-        else:
-            appliance, surge_kw = random.choice(surges)
+    async def run_virtual_node(idx: int, node: Dict[str, Any]):
+        await asyncio.sleep(random.uniform(0.002, 0.02))
+        base_kw = float(node.get("base_kw", 12.0))
+        base_prio = int(node.get("priority", 3))
+        shed_streak = int(node.get("shed_streak", 0))
+        manual_spike = bool(node.get("manual_spike", False))
+        vip_override = bool(node.get("vip_override", False))
 
-        requested_kw = round(base_kw + surge_kw, 2)
-        msg_id = f"MSG-{100 + idx}"
-
-        enqueue_ts = time.time()
-        allocated_kw = await broker.publish_telemetry(msg_id, hid, htype, appliance, requested_kw, prio)
-        wait_ms = round((time.time() - enqueue_ts) * 1000, 2)
-
-        status = "Allocated" if allocated_kw == requested_kw else ("Curtailed" if allocated_kw > 0 else "Shed")
-
-        return {
-            "msg_id": msg_id, "home_id": hid, "home_type": htype, "priority": prio,
-            "appliance": appliance, "requested_kw": requested_kw, "allocated_kw": allocated_kw,
-            "curtailed_kw": round(requested_kw - allocated_kw, 2), "status": status, "wait_ms": wait_ms
-        }
-
-    tasks = [asyncio.create_task(virtual_smart_home(i, n[0], n[1], n[2], n[3], n[4])) for i, n in enumerate(virtual_nodes)]
-    await asyncio.sleep(0.04)
-    await broker.negotiate_and_schedule()
-
-    nodes_data = await asyncio.gather(*tasks)
-    nodes_data.sort(key=lambda x: (x["priority"], x["msg_id"]))
-
-    total_window = max(0.01, time.time() - sim_start)
-    total_demanded = round(sum(n["requested_kw"] for n in nodes_data), 2)
-    total_allocated = round(sum(n["allocated_kw"] for n in nodes_data), 2)
-    grid_utilization = round((total_allocated / capacity) * 100, 1)
-    demand_ratio = round((total_demanded / capacity) * 100, 1)
-
-    arrival_rate_lambda = round(len(nodes_data) / total_window, 1)
-    service_rate_mu = round(len(nodes_data) / broker.service_time_total, 1)
-    avg_wait_ms = round((broker.total_wait_time / len(nodes_data)) * 1000, 2)
-
-    return {
-        "capacity_kw": capacity,
-        "total_demanded_kw": total_demanded,
-        "total_allocated_kw": total_allocated,
-        "grid_utilization_pct": grid_utilization,
-        "demand_ratio_pct": demand_ratio,
-        "shed_count": broker.shed_count,
-        "curtailed_count": broker.curtailed_count,
-        "queuing_metrics": {
-            "arrival_rate_lambda": arrival_rate_lambda,
-            "service_rate_mu": service_rate_mu,
-            "avg_wait_ms": avg_wait_ms,
-            "queue_discipline": "Priority Heap (Min-Heap + FIFO)"
-        },
-        "nodes": nodes_data,
-        "logs": broker.negotiation_logs
-    }
-
-# Multiple route aliases to ensure Vercel and local routing never mismatch
-@app.get("/api/simulate")
-async def run_sim_api(capacity: float = Query(default=110.0, ge=20.0, le=500.0), surge_mode: str = Query(default="peak")):
-    return await handle_simulation(capacity, surge_mode)
-
-@app.get("/simulate")
-async def run_sim_root(capacity: float = Query(default=110.0, ge=20.0, le=500.0), surge_mode: str = Query(default="peak")):
-    return await handle_simulation(capacity, surge_mode)
+        # Priority Aging (Anti-Starvation): 3 consecutive sheds elevates priority by 1 tier
+        aged = False
+        effective_prio = 1 if vip_override else base_prio
+        if not vip_override and shed_streak >= 3 and effective_prio > 1:
+            effective_prio -= 1
+            aged = True

@@ -88,6 +88,7 @@
     .btn-toggle { background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border); }
     .btn-toggle.fault-active { background: var(--cherry-blossom-900); border-color: var(--cherry-blossom-500); color: var(--cherry-blossom-200); }
     .btn-toggle.stream-active { background: var(--mustard-900); border-color: var(--mustard-500); color: var(--mustard-300); }
+    .btn-export { background: var(--crayola-blue-800); color: var(--crayola-blue-200); border: 1px solid var(--crayola-blue-400); }
 
     .chaos-bar {
       display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.75rem;
@@ -96,8 +97,19 @@
     }
     .chaos-actions, .add-node-form { display: flex; flex-wrap: wrap; align-items: center; gap: 0.55rem; }
 
+    /* Alert Flash Animation */
+    @keyframes alertPulse {
+      0% { box-shadow: 0 0 0 0 rgba(255, 0, 47, 0.4); border-color: var(--cherry-blossom-500); }
+      50% { box-shadow: 0 0 16px 4px rgba(255, 0, 47, 0.65); border-color: var(--cherry-blossom-200); }
+      100% { box-shadow: 0 0 0 0 rgba(255, 0, 47, 0.4); border-color: var(--cherry-blossom-500); }
+    }
+    .kpi-grid.overload-flash {
+      animation: alertPulse 1.2s ease-in-out infinite;
+      border-radius: 12px;
+    }
+
     .kpi-grid {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(195px, 1fr)); gap: 0.9rem; margin-bottom: 1.25rem;
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(195px, 1fr)); gap: 0.9rem; margin-bottom: 1.25rem; transition: all 0.3s ease;
     }
     .kpi-card {
       background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px; padding: 1rem 1.15rem; position: relative;
@@ -142,7 +154,7 @@
     table { width: 100%; border-collapse: collapse; }
     th, td { padding: 0.75rem 0.85rem; text-align: left; border-bottom: 1px solid var(--crayola-blue-800); font-size: 0.82rem; }
     th { color: var(--crayola-blue-200); font-size: 0.7rem; text-transform: uppercase; background: var(--crayola-blue-950); }
-    tr:hover td { background: rgba(0, 81, 255, 0.14); }
+    tr:hover td { background: rgba(0, 81, 255, 0.14); cursor: pointer; }
 
     .prio-badge { padding: 0.18rem 0.45rem; border-radius: 5px; font-weight: 700; font-size: 0.72rem; }
     .p1 { background: var(--cherry-blossom-900); color: var(--cherry-blossom-200); border: 1px solid var(--cherry-blossom-500); }
@@ -178,6 +190,25 @@
     }
     .qt-item span { display: block; color: var(--crayola-blue-300); font-size: 0.68rem; }
     .qt-item strong { color: var(--mustard-400); font-size: 0.85rem; }
+
+    /* Modal Styles */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0, 11, 36, 0.82); backdrop-filter: blur(4px);
+      display: none; place-items: center; z-index: 1000; padding: 1rem;
+    }
+    .modal-overlay.active { display: grid; }
+    .modal-card {
+      background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 16px;
+      width: 100%; max-width: 520px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+    }
+    .modal-header {
+      background: var(--crayola-blue-800); padding: 1rem 1.25rem; display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 1px solid var(--border);
+    }
+    .modal-body { padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; }
+    .modal-row { display: flex; justify-content: space-between; font-size: 0.85rem; padding: 0.4rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .modal-row span:first-child { color: var(--text-muted); }
+    .modal-row span:last-child { font-weight: 700; color: var(--champagne-mist-50); }
   </style>
 </head>
 <body>
@@ -187,7 +218,7 @@
         <div class="brand-icon">⚡</div>
         <div>
           <h1>GridPulse Load Balancer</h1>
-          <p>24h Diurnal Smart Grid, Solar Prosumer & Priority Queuing Simulator</p>
+          <p>24h Diurnal Smart Grid, Ambient Climate & Control Room Telemetry</p>
         </div>
         <div class="clock-pill" id="simClock">🕒 18:00 (Evening Peak)</div>
       </div>
@@ -196,22 +227,22 @@
         <div class="control-group">
           <label>Substation Ceiling</label>
           <div class="slider-row">
-            <input type="range" id="capSlider" min="50" max="220" step="5" value="110" oninput="document.getElementById('capDisplay').textContent = this.value + ' kW'" />
+            <input type="range" id="capSlider" min="50" max="250" step="5" value="110" oninput="document.getElementById('capDisplay').textContent = this.value + ' kW'" />
             <span class="cap-badge" id="capDisplay">110 kW</span>
           </div>
         </div>
 
         <div class="control-group">
-          <label>Load Profile</label>
-          <select id="surgeMode">
-            <option value="normal">Off-Peak Baseline</option>
-            <option value="peak" selected>Dynamic Peak Surge</option>
-            <option value="extreme">Extreme Heatwave</option>
-          </select>
+          <label>Ambient Temp (°C)</label>
+          <div class="slider-row">
+            <input type="range" id="tempSlider" min="20" max="48" step="1" value="32" oninput="document.getElementById('tempDisplay').textContent = this.value + ' °C'" />
+            <span class="cap-badge" id="tempDisplay" style="color:var(--peach-glow-200);">32 °C</span>
+          </div>
         </div>
 
         <button class="btn btn-primary" onclick="runStep()">Step +30m</button>
         <button class="btn btn-toggle" id="streamBtn" onclick="toggleStream()">▶ Auto-Stream</button>
+        <button class="btn btn-export" onclick="exportCsvAudit()">📥 Export CSV Audit</button>
       </div>
     </div>
 
@@ -235,7 +266,8 @@
       </div>
     </div>
 
-    <div class="kpi-grid">
+    <!-- KPI Strip with Overload Alert Pulse -->
+    <div class="kpi-grid" id="kpiGridContainer">
       <div class="kpi-card">
         <div class="kpi-label">Total Node Demand</div>
         <div class="kpi-value" id="kpiDemand">-- kW</div>
@@ -289,7 +321,7 @@
       <div class="panel">
         <div class="panel-header">
           <h2 id="tableTitle">Virtual Smart Home Nodes</h2>
-          <span class="pill-tag">Priority Heap + Aging</span>
+          <span class="pill-tag">Click row to inspect</span>
         </div>
         <div class="table-wrap">
           <table>
@@ -327,11 +359,23 @@
     </div>
   </div>
 
+  <!-- Node Inspector Modal -->
+  <div class="modal-overlay" id="nodeModal" onclick="closeModal(event)">
+    <div class="modal-card" onclick="event.stopPropagation()">
+      <div class="modal-header">
+        <h2 id="modalTitle" style="font-size: 1rem; color: var(--champagne-mist-50);">Node Telemetry Inspector</h2>
+        <button class="mini-btn" onclick="closeModal()">✕ Close</button>
+      </div>
+      <div class="modal-body" id="modalContent"></div>
+    </div>
+  </div>
+
   <script>
     let simMinutes = 1080;
     let transformerTrip = false;
     let cloudCover = false;
     let streamTimer = null;
+    let simulationHistory = []; // Stored for CSV Export Audit
 
     let nodesState = [
       { id: 1, home_id: "St. Jude Hospital", home_type: "Critical Medical", base_kw: 22, priority: 1, has_solar: false, shed_streak: 0, manual_spike: false, vip_override: false },
@@ -377,8 +421,8 @@
     }
 
     function jumpToNoon() { simMinutes = 750; runStep(); }
-    function triggerNodeSpike(id) { const n = nodesState.find(x => x.id === id); if (n) { n.manual_spike = true; runStep(); } }
-    function toggleNodeVip(id) { const n = nodesState.find(x => x.id === id); if (n) { n.vip_override = !n.vip_override; runStep(); } }
+    function triggerNodeSpike(id, event) { event.stopPropagation(); const n = nodesState.find(x => x.id === id); if (n) { n.manual_spike = true; runStep(); } }
+    function toggleNodeVip(id, event) { event.stopPropagation(); const n = nodesState.find(x => x.id === id); if (n) { n.vip_override = !n.vip_override; runStep(); } }
 
     function addCustomNode() {
       const name = document.getElementById('newNodeName').value.trim() || `Custom Node #${nodesState.length + 1}`;
@@ -399,6 +443,47 @@
         streamTimer = setInterval(runStep, 2200);
         btn.classList.add('stream-active'); btn.textContent = '⏸ Streaming (2.2s)';
       }
+    }
+
+    // Modal Inspector Handler
+    function openNodeModal(nodeId) {
+      const n = nodesState.find(x => x.id === nodeId);
+      if (!n) return;
+      document.getElementById('modalTitle').textContent = `Inspector • ${n.home_id}`;
+      document.getElementById('modalContent').innerHTML = `
+        <div class="modal-row"><span>Node Type</span><span>${n.home_type}</span></div>
+        <div class="modal-row"><span>Base Capacity</span><span>${n.base_kw} kW</span></div>
+        <div class="modal-row"><span>Assigned Priority Tier</span><span>P${n.priority}</span></div>
+        <div class="modal-row"><span>Effective Priority (Aged/VIP)</span><span>P${n.effective_priority || n.priority}</span></div>
+        <div class="modal-row"><span>Solar Prosumer Generation</span><span>${n.solar_gen_kw || 0} kW</span></div>
+        <div class="modal-row"><span>Historical Shed Streak</span><span style="color:var(--cherry-blossom-300);">${n.shed_streak || 0} cycles</span></div>
+        <div class="modal-row"><span>Current Status</span><span style="color:var(--mustard-300);">${n.status || 'Active'}</span></div>
+      `;
+      document.getElementById('nodeModal').classList.add('active');
+    }
+
+    function closeModal(e) {
+      if (!e || e.target.id === 'nodeModal' || e.target.tagName === 'BUTTON') {
+        document.getElementById('nodeModal').classList.remove('active');
+      }
+    }
+
+    // CSV Audit Export
+    function exportCsvAudit() {
+      if (simulationHistory.length === 0) {
+        alert("No simulation audit data available yet. Run a step first!");
+        return;
+      }
+      let csv = "Time,Demand_kW,Capacity_kW,Allocated_kW,Grid_Util_Pct,Freq_Hz,Shed_Count,Curtailed_Count,Wq_ms\n";
+      simulationHistory.forEach(s => {
+        csv += `${s.time},${s.demand},${s.capacity},${s.allocated},${s.util},${s.freq},${s.shed},${s.curtailed},${s.wq}\n`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `GridPulse_Audit_${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
     }
 
     function renderTopologySvg(nodes, effectiveCap) {
@@ -427,13 +512,22 @@
 
     async function runStep() {
       const cap = parseFloat(document.getElementById('capSlider').value);
+      const temp = parseFloat(document.getElementById('tempSlider').value);
       const mode = document.getElementById('surgeMode').value;
 
       try {
         const res = await fetch('/api/simulate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ capacity: cap, sim_minutes: simMinutes, surge_mode: mode, transformer_trip: transformerTrip, cloud_cover: cloudCover, nodes: nodesState })
+          body: JSON.stringify({
+            capacity: cap,
+            sim_minutes: simMinutes,
+            surge_mode: mode,
+            transformer_trip: transformerTrip,
+            cloud_cover: cloudCover,
+            ambient_temp: temp,
+            nodes: nodesState
+          })
         });
 
         if (!res.ok) throw new Error(`Server returned status ${res.status}`);
@@ -441,6 +535,19 @@
         const data = await res.json();
         nodesState = data.nodes;
         simMinutes = data.next_sim_minutes;
+
+        // Store audit state for CSV export
+        simulationHistory.push({
+          time: data.formatted_time,
+          demand: data.total_demanded_kw,
+          capacity: data.effective_capacity_kw,
+          allocated: data.total_allocated_kw,
+          util: data.grid_utilization_pct,
+          freq: data.grid_freq_hz,
+          shed: data.shed_count,
+          curtailed: data.curtailed_count,
+          wq: data.queuing_metrics.avg_wait_ms
+        });
 
         const hr = Math.floor(data.sim_minutes / 60);
         const period = (hr >= 6 && hr < 17) ? '☀️ Daytime Solar' : (hr >= 17 && hr <= 22 ? '🌆 Evening Peak' : '🌙 Off-Peak');
@@ -456,6 +563,14 @@
         freqEl.textContent = `${data.grid_freq_hz.toFixed(2)} Hz`;
         freqEl.style.color = data.grid_freq_hz < 49.85 ? '#ff6682' : '#ffda33';
         document.getElementById('kpiUtilSub').textContent = `Utilization: ${data.grid_utilization_pct}% (${data.total_allocated_kw} kW)`;
+
+        // Audio/Visual Alert Flash Trigger on Overload or Transformer Trip
+        const kpiGrid = document.getElementById('kpiGridContainer');
+        if (diff > 0 || transformerTrip) {
+          kpiGrid.classList.add('overload-flash');
+        } else {
+          kpiGrid.classList.remove('overload-flash');
+        }
 
         document.getElementById('kpiShed').textContent = `${data.shed_count} Shed / ${data.curtailed_count} Curtailed`;
         document.getElementById('kpiWait').textContent = `${data.queuing_metrics.avg_wait_ms} ms`;
@@ -483,15 +598,15 @@
           let stClass = n.status === 'Curtailed' ? 'st-curtailed' : (n.status === 'Shed' ? 'st-shed' : 'st-allocated');
 
           return `
-            <tr>
+            <tr onclick="openNodeModal(${n.id})">
               <td><div style="font-weight:700; color:var(--champagne-mist-50);">${n.home_id}${solarTag}</div><div style="font-size:0.72rem; color:var(--text-muted);">${n.appliance}${streakTag}</div></td>
               <td><span class="prio-badge ${pClass}">P${n.effective_priority}</span>${agedBadge}</td>
               <td style="font-weight:600;">${n.requested_kw} kW</td>
               <td style="font-weight:700; color:var(--mustard-300);">${n.allocated_kw} kW</td>
               <td><span class="status-badge ${stClass}">${n.status}</span></td>
               <td>
-                <button class="mini-btn" onclick="triggerNodeSpike(${n.id})">⚡ Spike</button>
-                <button class="mini-btn ${n.vip_override ? 'active-vip' : ''}" onclick="toggleNodeVip(${n.id})">🏥 VIP</button>
+                <button class="mini-btn" onclick="triggerNodeSpike(${n.id}, event)">⚡ Spike</button>
+                <button class="mini-btn ${n.vip_override ? 'active-vip' : ''}" onclick="toggleNodeVip(${n.id}, event)">🏥 VIP</button>
               </td>
             </tr>
           `;
@@ -506,11 +621,9 @@
 
       } catch (err) {
         console.error("Simulation error:", err);
-        document.getElementById('brokerLogs').innerHTML = `<div class="log-entry SHED"><div class="log-top"><span>Connection Error</span></div><div class="log-detail">Could not reach /api/simulate. Make sure FastAPI server is running or check console.</div></div>`;
       }
     }
 
-    // Automatically initialize simulation when page opens
     window.addEventListener('DOMContentLoaded', runStep);
   </script>
 </body>
